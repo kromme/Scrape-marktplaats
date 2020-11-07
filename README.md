@@ -11,3 +11,7 @@ Furthermore, before you start:
 1. Go to marktplaats, go to the categories you would like to keep track off and get the URl.
 2. Modify the `urls` with the respective urls.
 3. Run `python scrape_marktplaats.py`
+
+Happy scraping!
+
+Btw, I advice to use a VPN.
