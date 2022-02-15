@@ -2,10 +2,12 @@
 A Simple script to scrape marktplaats, a Dutch Ebay. I scheduled this script nightly, so I got notified on new entries. Which I used when I wanted to buy my first Motorcycle. (Which I found using this script :) )
 
 ## Installation
-This is a standalone script, you don't need to install it. It does however have two dependencies: `pandas` and `selenium`, which are easily installed using pip.
+This is a standalone script, you don't need to install it. It does however have some dependencies: `pandas`, `selenium` and `webdriver_manager`, which are easily installed using pip.
+
+`pip3 install webdriver_manager pandas selenium`
+
 Furthermore, before you start:
 * Get the right geckodriver: every Chrome / Firefox instance needs a different geckodriver
-* I'm using Chrome here, change that to your favorite browser
 
 ## Run
 1. Go to marktplaats, go to the categories you would like to keep track off and get the URl.
