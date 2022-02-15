@@ -12,6 +12,16 @@ Furthermore, before you start:
 2. Modify the `urls` with the respective urls.
 3. Run `python scrape_marktplaats.py`
 
-Happy scraping!
+## Counter bot-blocks
+Sometimes Funda (or other site you want to scrape) find out you're using a bot and they'll block you. Here we're using two things to counter their blocks.  
 
-Btw, I advice to use a VPN.
+### User Agent
+First we're changing the user agent of your browser.
+The user agent says to the site which browser and OS you're using, but we can change this. 
+When getting blocked, we're changing it to another heavy used agent.  
+
+### Proxies
+The next thing we're doing is changing the actual url we're accessing the site from. https://www.sslproxies.org/ has a list of proxies, we're simply looping through the list until we've found a proxy which is accepted by Funda.
+
+*Note: that this script and the scraped data are not used commercially.*
+
