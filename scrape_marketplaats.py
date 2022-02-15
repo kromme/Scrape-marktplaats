@@ -1,7 +1,5 @@
 # coding: utf-8
 
-## https://github.com/kromme/Funda-scraper
-
 import time
 import random
 import datetime
