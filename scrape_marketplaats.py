@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.firefox import GeckoDriverManager
 from selenium.webdriver.common.by import By
@@ -49,8 +50,8 @@ class marktplaats_scraper(object):
         self.XPATH_POPUP = (
             ".//i[@class='hz-Icon hz-Icon--m hz-SvgIcon hz-SvgIconClose']"
         )
-        self.XPATH_BID = ".//span[@class='vip-bid-amount-default-view bid-amount']"
-        self.XPATH_BIDDATE = ".//span[@class='vip-bid-date-default-view bid-date']"
+        self.XPATH_BID = ".//div[@class='BiddingList-content']"
+        self.XPATH_BIDDATE = ".//span[@class='BiddingList-date']"
         self.XPATH_FIRSTCOLUMN = (
             ".//table[@class='first-column attribute-table single-value-attributes']"
         )
@@ -59,10 +60,10 @@ class marktplaats_scraper(object):
         )
         self.XPATH_PRICE = "//*[@id='listing-root']/div/div[2]/div[1]"
         self.XPATH_TITLE = "//*[@id='listing-root']/div/header/h1"
-        self.XPATH_DESCRIPTION = "//*[@id='page-wrapper']/div[4]/section[1]/div[1]/div[5]"
+        self.XPATH_DESCRIPTION = "//div[@class='block-wrapper-s Description-root']"
         self.XPATH_SINCE = "//*[@id='listing-root']/div/div[3]/span[3]/span"
         self.XPATH_MPID = "//*[@id='report-root']/div/span"
-        self.XPATH_LISTINGS = ".//a[@class='mp-Listing-coverLink']"
+        self.XPATH_LISTINGS = ".//a[contains(@class, 'hz-Listing-coverLink')]"
 
         # init
         self.db = []
@@ -84,8 +85,11 @@ class marktplaats_scraper(object):
 
 
     def get_driver(self):
-        return webdriver.Firefox(firefox_profile = self.profile, 
-                                        service=Service(GeckoDriverManager().install()))
+        options=Options()
+
+        return webdriver.Firefox(options=options,
+            service=Service(GeckoDriverManager().install()))
+
 
     def _change_useragent(self):
         """Change the user agent
@@ -102,24 +106,23 @@ class marktplaats_scraper(object):
 
         ua = random.choice(uas)
         
-        self.profile.set_preference("general.useragent.override", ua)
-        self.profile.update_preferences() 
+        self.options.set_preference("general.useragent.override", ua)
         self.logger.info(f'User agent set to {ua}')
-        
+
+
     def _set_profile(self):
         """Create a profile for FF
         """
-        self.profile = webdriver.FirefoxProfile()
-        
+        self.options = Options()        
         # to make sure we can close the windows: https://stackoverflow.com/questions/45510338/selenium-webdriver-3-4-0-geckodriver-0-18-0-firefox-which-combination-w
-        self.profile.set_preference("browser.tabs.remote.autostart", False)
-        self.profile.set_preference("browser.tabs.remote.autostart.1", False)
-        self.profile.set_preference("browser.tabs.remote.autostart.2", False)
+        self.options.set_preference("browser.tabs.remote.autostart", False)
+        self.options.set_preference("browser.tabs.remote.autostart.1", False)
+        self.options.set_preference("browser.tabs.remote.autostart.2", False)
 
         # turn off auto update
-        self.profile.set_preference('app.update.auto',False)
-        self.profile.set_preference('app.update.enabled',False)
-        self.profile.set_preference('app.update.silent',False)
+        self.options.set_preference('app.update.auto',False)
+        self.options.set_preference('app.update.enabled',False)
+        self.options.set_preference('app.update.silent',False)
         
         # set user agent
         self._change_useragent()
@@ -135,16 +138,16 @@ class marktplaats_scraper(object):
         port = int(self.proxies.iloc[proxyNo].port)
 
         # set proxy
-        self.profile.set_preference("network.proxy.type", 1)
-        self.profile.set_preference("network.proxy.http", proxy)
-        self.profile.set_preference("network.proxy.http_port", port)
-        self.profile.set_preference("network.proxy.ssl", proxy)
-        self.profile.set_preference("network.proxy.ssl_port", port)
+        self.options.set_preference("network.proxy.type", 1)
+        self.options.set_preference("network.proxy.http", proxy)
+        self.options.set_preference("network.proxy.http_port", port)
+        self.options.set_preference("network.proxy.ssl", proxy)
+        self.options.set_preference("network.proxy.ssl_port", port)
         self._change_useragent()
-        self.profile.update_preferences() 
         
         self.logger.info(f'Proxy change to {proxy}')
-        
+
+
     def _get_proxy_list(self):
         """Get list of proxies we can use
         """
@@ -152,13 +155,10 @@ class marktplaats_scraper(object):
         
         # go to page
         driver.get('https://www.sslproxies.org/')
-        
-        # set to 80 results
-        ##driver.find_element_by_xpath("//.[@name='proxylisttable_length']").send_keys('80')
-        
+                
         # get table results
-        ##table = driver.find_element_by_xpath("//.[@id='proxylisttable']")
-        table = driver.find_element_by_xpath("/html/body/section[1]/div/div[2]/div/table")
+        table = driver.find_element(By.XPATH, "/html/body/section[1]/div/div[2]/div/table")
+
         rows = table.text.split('\n')[1:80]
         driver.close()
         
@@ -198,8 +198,8 @@ class marktplaats_scraper(object):
             
             # wait for ip
             wait = WebDriverWait(driver,10)
-            wait.until(lambda driver: driver.find_element_by_class_name('zci__body'))
-            ip = driver.find_element_by_class_name('zci__body').text
+            wait.until(lambda driver: driver.find_element(By.CLASS_NAME, 'zci__body'))
+            ip = driver.find_element(By.CLASS_NAME, 'zci__body').text
                 
             # if that works, check if MP is reachable
             driver.get('https://www.marktplaats.nl')
@@ -324,6 +324,7 @@ class marktplaats_scraper(object):
         self.logger.info(f"{len(listings)} found")
 
         return [listing.get_attribute("href") for listing in listings]
+
 
     def get_info_from_all_listings(self, main_url: str):
         """Loop through all listings and get information

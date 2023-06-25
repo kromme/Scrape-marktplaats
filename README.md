@@ -4,6 +4,16 @@ A Simple script to scrape marktplaats, a Dutch Ebay. I scheduled this script nig
 ## Installation
 This is a standalone script, you don't need to install it. It does however have some dependencies: `pandas`, `selenium` and `webdriver_manager`, which are easily installed using pip.
 
+Create a virtual python environment
+
+`python3 -m venv .venv`
+
+Activate this environment
+
+`source .venv/bin/activate`
+
+Install necessary dependancies for this script
+
 `pip3 install webdriver_manager pandas selenium`
 
 Furthermore, before you start:
