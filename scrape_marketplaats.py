@@ -85,9 +85,8 @@ class marktplaats_scraper(object):
 
 
     def get_driver(self):
-        options=Options()
 
-        return webdriver.Firefox(options=options,
+        return webdriver.Firefox(options=self.options,
             service=Service(GeckoDriverManager().install()))
 
 
