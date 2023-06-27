@@ -11,6 +11,9 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.firefox import GeckoDriverManager
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import WebDriverException
+
 
 urls = [
     "https://www.marktplaats.nl/z/motoren/motoren-honda/motor.html?query=motor&categoryId=696&currentPage=1&numberOfResultsPerPage=100&attributes=S%2C10898",
@@ -28,11 +31,15 @@ class marktplaats_scraper(object):
         urls: list,
         output_filename: str = "output.csv",
         use_proxy : bool = True,
+        headless: bool = False,
+        proxyNo: int = 0
     ):
         self.urls = urls
         self.output_filename = output_filename
         self.proxies = pd.DataFrame()
         self.use_proxy = use_proxy
+        self.headless = headless
+        self.proxyNo = proxyNo
 
         # define logger
         self._define_logger()
@@ -85,6 +92,10 @@ class marktplaats_scraper(object):
 
 
     def get_driver(self):
+
+        if self.headless:
+            self.logger.info(f'Starting the browser headless {self.headless}')
+            self.options.add_argument("-headless")
 
         return webdriver.Firefox(options=self.options,
             service=Service(GeckoDriverManager().install()))
@@ -144,22 +155,21 @@ class marktplaats_scraper(object):
         self.options.set_preference("network.proxy.ssl_port", port)
         self._change_useragent()
         
-        self.logger.info(f'Proxy change to {proxy}')
+        self.logger.info(f'Proxy change to {proxy}:{port}')
 
 
     def _get_proxy_list(self):
         """Get list of proxies we can use
         """
-        driver = self.get_driver()
-        
+
         # go to page
-        driver.get('https://www.sslproxies.org/')
+        self.DRIVER.get('https://www.sslproxies.org/')
                 
         # get table results
-        table = driver.find_element(By.XPATH, "/html/body/section[1]/div/div[2]/div/table")
+        table = self.DRIVER.find_element(By.XPATH, "/html/body/section[1]/div/div[2]/div/table")
 
         rows = table.text.split('\n')[1:80]
-        driver.close()
+        self.DRIVER.close()
         
         # to dataframe
         hosts = []
@@ -183,36 +193,68 @@ class marktplaats_scraper(object):
         if not self.use_proxy:
             return
         success = False
-        proxyNo = 0
 
         while not success:
-            self.logger.info(f'Trying proxy number {proxyNo}')
-            self._change_proxy(proxyNo = proxyNo)
+            self.logger.info(f'Trying proxy number {self.proxyNo}')
+            self._change_proxy(proxyNo = self.proxyNo)
             
             # start driver
             driver = self.get_driver()
             
-            # go to duckduckgo to check ip
-            driver.get('https://duckduckgo.com/?q=my+ip&t=hb&ia=answer')
-            
-            # wait for ip
-            wait = WebDriverWait(driver,10)
-            wait.until(lambda driver: driver.find_element(By.CLASS_NAME, 'zci__body'))
-            ip = driver.find_element(By.CLASS_NAME, 'zci__body').text
+            try:
+                driver.set_page_load_timeout(30)
+                # go to duckduckgo to check ip
+                driver.get('https://duckduckgo.com/?q=my+ip&t=hb&ia=answer')
+                # wait for ip
+                wait = WebDriverWait(driver,10)
+                wait.until(lambda driver: driver.find_element(By.CLASS_NAME, 'zci__body'))
+                ip = driver.find_element(By.CLASS_NAME, 'zci__body').text
+            except TimeoutException as e:
+                print("TimeoutException has been thrown. " + str(e))
+                self.proxyNo += 1
+
+                driver.close()
+                if self.proxyNo >= 79:
+                    break
+                self.find_proxy()
+            except WebDriverException as e:
+                print("WebDriverException has been thrown. " + str(e))
+                self.proxyNo += 1
                 
-            # if that works, check if MP is reachable
-            driver.get('https://www.marktplaats.nl')
-            
+                driver.close()
+                if self.proxyNo >= 79:
+                    break
+                self.find_proxy()
+
+            try:
+                driver.set_page_load_timeout(30)
+                # if that works, check if MP is reachable
+                driver.get('https://www.marktplaats.nl')
+            except TimeoutException as e:
+                print("TimeoutException has been thrown requesting marktplaats.nl. " + str(e))
+                self.proxyNo += 1
+                
+                driver.close()
+                if self.proxyNo >= 79:
+                    break
+                self.find_proxy()
+            except WebDriverException as e:
+                print("WebDriverException has been thrown. " + str(e))
+                self.proxyNo += 1
+                
+                driver.close()
+                if self.proxyNo >= 79:
+                    break
+                self.find_proxy()
+
             # check if proxy isnt blocked. other go to except.
             if not ('blocked' in driver.title or 'error' in driver.title.lower()):
-                proxyNo += 1
+                self.proxyNo += 1
                 
-                self.DRIVER.close()
-                self.DRIVER = self.get_driver()
-                self._change_proxy(proxyNo = proxyNo)
-                
-                if proxyNo >= 79:
+                driver.close()
+                if self.proxyNo >= 79:
                     break
+                self.find_proxy()
                 
             # if works, end loop
             self.logger.info(f'Now working from {ip}')
@@ -246,81 +288,117 @@ class marktplaats_scraper(object):
         time.sleep(random.randint(2, 9))
 
         try:
-            # go to url
-            self.DRIVER.get(url)
 
-            # get bids
-            bids = [
-                bid.text for bid in self.DRIVER.find_elements(By.XPATH, (self.XPATH_BID))
-            ]
-            max_bid = "NA" if len(bids) == 0 else bids[0]
-
-            # get bids dates
-            bids_date = [
-                date.text
-                for date in self.DRIVER.find_elements(By.XPATH, (self.XPATH_BIDDATE))
-            ]
-            max_bid_date = "NA" if len(bids_date) == 0 else bids_date[0]
-
-            # get info from table
-            table = ""
+            driver = self.get_driver()
+            
             try:
-                table += self.DRIVER.find_element(By.XPATH, (
-                    self.XPATH_FIRSTCOLUMN)
-                ).text.replace("\n", "|")
-            except:
-                table += ""
+                driver.set_page_load_timeout(30)
+                # go to url
+                driver.get(url)
 
-            try:
-                table += "|" + self.DRIVER.find_element(By.XPATH, (
-                    self.XPATH_SECONDCOLUMN)
-                ).text.replace("\n", "|")
-            except:
-                table += ""
+                # get bids
+                bids = [
+                    bid.text for bid in self.DRIVER.find_elements(By.XPATH, (self.XPATH_BID))
+                ]
+                max_bid = "NA" if len(bids) == 0 else bids[0]
 
-            # gather
-            output = {
-                "price": self.DRIVER.find_element(By.XPATH, (
-                    self.XPATH_PRICE)
-                ).text.replace(";", "|"),
-                "title": self.DRIVER.find_element(By.XPATH, (
-                    self.XPATH_TITLE)
-                ).text.replace(";", "|"),
-                "description": self.DRIVER.find_element(By.XPATH, (self.XPATH_DESCRIPTION))
-                .text.replace("\n", ".")
-                .replace(";", "|"),
-                "table": table,
-                "max_bid": max_bid,
-                "max_bid_date": max_bid_date,
-                "listing_url": self.DRIVER.current_url,
-                "bids": bids,
-                "bids_date": bids_date,
-                "since": self.DRIVER.find_element(By.XPATH, (self.XPATH_SINCE)).text,
-                "MP_ID": self.DRIVER.find_element(By.XPATH, (self.XPATH_MPID)).text,
-            }
+                # get bids dates
+                bids_date = [
+                    date.text
+                    for date in self.DRIVER.find_elements(By.XPATH, (self.XPATH_BIDDATE))
+                ]
+                max_bid_date = "NA" if len(bids_date) == 0 else bids_date[0]
+
+                # get info from table
+                table = ""
+                try:
+                    table += self.DRIVER.find_element(By.XPATH, (
+                        self.XPATH_FIRSTCOLUMN)
+                    ).text.replace("\n", "|")
+                except:
+                    table += ""
+
+                try:
+                    table += "|" + self.DRIVER.find_element(By.XPATH, (
+                        self.XPATH_SECONDCOLUMN)
+                    ).text.replace("\n", "|")
+                except:
+                    table += ""
+
+                # gather
+                output = {
+                    "price": self.DRIVER.find_element(By.XPATH, (
+                        self.XPATH_PRICE)
+                    ).text.replace(";", "|"),
+                    "title": self.DRIVER.find_element(By.XPATH, (
+                        self.XPATH_TITLE)
+                    ).text.replace(";", "|"),
+                    "description": self.DRIVER.find_element(By.XPATH, (self.XPATH_DESCRIPTION))
+                    .text.replace("\n", ".")
+                    .replace(";", "|"),
+                    "table": table,
+                    "max_bid": max_bid,
+                    "max_bid_date": max_bid_date,
+                    "listing_url": self.DRIVER.current_url,
+                    "bids": bids,
+                    "bids_date": bids_date,
+                    "since": self.DRIVER.find_element(By.XPATH, (self.XPATH_SINCE)).text,
+                    "MP_ID": self.DRIVER.find_element(By.XPATH, (self.XPATH_MPID)).text,
+                }
+
+            except TimeoutException as e:
+                print("TimeoutException has been thrown. " + str(e))
+                self.proxyNo += 1
+
+                driver.close()
+                self.find_proxy()
+            except WebDriverException as e:
+                print("WebDriverException has been thrown. " + str(e))
+                self.proxyNo += 1
+                
+                driver.close()
+                self.find_proxy()
+
             return output
 
         except Exception as e:
             self.logger.error(f"Could not read {url}", exc_info=e)
 
+
     def get_listings_from_site(self, url: str):
         """Retrieve all listings from a site
         """
+        driver = self.get_driver()
 
-        self.DRIVER.get(url)
+        try:
+            driver.set_page_load_timeout(30)
+            # go to duckduckgo to check ip
+            driver.get(url)
+            # accept cookies
+            self._accept_cookie()
 
-        # accept cookies
-        self._accept_cookie()
+            # close popup
+            self._close_popup()
 
-        # close popup
-        self._close_popup()
+            # wait a sec
+            time.sleep(2)
 
-        # wait a sec
-        time.sleep(2)
+            # retrieve listings on the site
+            listings = self.DRIVER.find_elements(By.XPATH, (self.XPATH_LISTINGS))
+            self.logger.info(f"{len(listings)} found")
 
-        # retrieve listings on the site
-        listings = self.DRIVER.find_elements(By.XPATH, (self.XPATH_LISTINGS))
-        self.logger.info(f"{len(listings)} found")
+        except TimeoutException as e:
+            print("TimeoutException has been thrown. " + str(e))
+            self.proxyNo += 1
+
+            driver.close()
+            self.find_proxy()
+        except WebDriverException as e:
+            print("WebDriverException has been thrown. " + str(e))
+            self.proxyNo += 1
+            
+            driver.close()
+            self.find_proxy()
 
         return [listing.get_attribute("href") for listing in listings]
 
